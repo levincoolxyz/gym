@@ -51,6 +51,13 @@ register(
 # ----------------------------------------
 
 register(
+    id='AntsEnv-v0',
+    entry_point='gym.envs.classic_control:AntsEnv',
+    max_episode_steps=500,
+    reward_threshold=100.0,
+)
+
+register(
     id='CartPole-v0',
     entry_point='gym.envs.classic_control:CartPoleEnv',
     max_episode_steps=200,

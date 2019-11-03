@@ -43,7 +43,7 @@ class AntsEnv(gym.Env):
     action_space = None
     observation_space = None
 
-    def __init__(self, Nmax=6, dt=0.1):
+    def __init__(self, Nmax=12, dt=0.1):
     # def __init__(self, Nmax=12, dt=1):
         self.Nmax = Nmax # total number of ants (including one informer)
         self.dt = dt # decision time step
@@ -76,9 +76,7 @@ class AntsEnv(gym.Env):
         """
 
         # combine probability to pull with pulling angle adjustment phi
-        low = np.append(np.full(self.Nmax-1,0.),np.full(self.Nmax-1,-self.dphi/2))
-        high = np.append(np.full(self.Nmax-1,1.),np.full(self.Nmax-1,self.dphi/2))
-        self.action_space = spaces.Box(low=low, high=high, dtype=np.float32)
+        self.action_space = spaces.Box(low=-1., high=1., shape=((self.Nmax-1)*2,), dtype=np.float32)
 
         # dot product between ant direction and force direction due to other ants
         self.observation_space = spaces.Box(low=-float('inf'), high=float('inf'), shape=(self.Nmax-1,), dtype=np.float32)
@@ -128,12 +126,12 @@ class AntsEnv(gym.Env):
         position, velocity = self.state
 
         # pullProb = np.append(0, action["pullProb"])
-        pullProb = np.append(0, action[:self.Nmax-1])
+        pullProb = np.append(0, action[:self.Nmax-1]/2.+.5)
         isPuller = np.random.uniform(0., 1., self.Nmax)
         isPuller = (isPuller >= pullProb)*1
 
         # self.phi = np.append(-position[2]-self.theta[0], action["phi"])
-        self.phi = np.append(-position[2]-self.theta[0], action[self.Nmax-1:])
+        self.phi = np.append(-position[2]-self.theta[0], action[self.Nmax-1:]*self.dphi/2.)
 
         # update ant states
         self.rx = self.b*np.cos(position[2] + self.theta)
@@ -266,10 +264,8 @@ class AntsEnv(gym.Env):
 
         cargo = self.viewer.draw_circle(self.b)
         leader = self.viewer.draw_line((0., 0.), (self.b, 0.))
-        # leader.add_attr(rendering.Transform(translation=(self.b/2, 0)))
         cargoMove = rendering.Transform(rotation=position[2], translation=(position[0],position[1]))
         leader.add_attr(cargoMove)
-        # leader.add_attr(rendering.Transform(translation=(-self.b/2, 0)))
         cargo.add_attr(cargoMove)
         cargo.set_color(.8, .1, .1)
         for i in range(self.Nmax):

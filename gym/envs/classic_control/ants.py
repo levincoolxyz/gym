@@ -264,10 +264,11 @@ class AntsEnv(gym.Env):
 
         cargo = self.viewer.draw_circle(self.b)
         leader = self.viewer.draw_line((0., 0.), (self.b, 0.))
+        leader.add_attr(rendering.Transform(rotation=position[2]))
         cargoMove = rendering.Transform(rotation=position[2], translation=(position[0],position[1]))
         leader.add_attr(cargoMove)
         cargo.add_attr(cargoMove)
-        cargo.set_color(.8, .1, .1)
+        cargo.set_color(.9, .1, .1)
         for i in range(self.Nmax):
             ant = draw_ant(self.viewer, self.b/self.Nmax*np.pi)
             antgle = self.theta[i]+self.phi[i]+np.pi

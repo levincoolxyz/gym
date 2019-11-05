@@ -160,7 +160,9 @@ class AntsEnv(gym.Env):
         position = position + velocity*self.dt
         self.state = position, velocity
         self.Ftot = np.linalg.norm([Ftotx, Ftoty], axis=0)
-        self.Fhat = np.sum(np.array([Ftotx/self.Ftot, Ftoty/self.Ftot])*np.array([pulx, puly]), axis=0)
+        Fcos = np.sum([Ftotx*pulx/self.Ftot, Ftoty*puly/self.Ftot], axis=0)
+        Fsin = np.sum([Ftotx*puly/self.Ftot, -Ftoty*pulx/self.Ftot], axis=0)
+        self.Fang = np.arctan2(Fcos,Fsin)/np.pi
 
         # reward is to move to the right as fast as possible
         return self._get_obs(), velocity[0], False, {}
@@ -174,13 +176,13 @@ class AntsEnv(gym.Env):
 
         self.state = np.full(3, 0.), np.random.uniform(-1., 1., 3)
         self.Ftot = np.random.uniform(-1., 1., self.Nmax)
-        self.Fhat = np.random.uniform(-1., 1., self.Nmax)
+        self.Fang = np.random.uniform(-1., 1., self.Nmax)
         return self._get_obs()
 
     def _get_obs(self):
         ants = np.array(range(self.Nmax-1))
         order = np.concatenate((ants[:,None],ants[:,None]+self.Nmax-1),axis=1).flatten()
-        obs = np.append(self.Ftot[1:], self.Fhat[1:])
+        obs = np.append(self.Ftot[1:], self.Fang[1:])
         return obs[order]
 
     def render(self, mode='human'):

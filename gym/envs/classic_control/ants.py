@@ -162,7 +162,7 @@ class AntsEnv(gym.Env):
         self.Ftot = np.linalg.norm([Ftotx, Ftoty], axis=0)
         Fcos = np.sum([Ftotx*pulx/self.Ftot, Ftoty*puly/self.Ftot], axis=0)
         Fsin = np.sum([Ftotx*puly/self.Ftot, -Ftoty*pulx/self.Ftot], axis=0)
-        self.Fang = np.arctan2(Fcos,Fsin)/np.pi
+        self.Fang = np.arctan2(Fsin,Fcos)/np.pi
 
         # reward is to move to the right as fast as possible
         return self._get_obs(), velocity[0], False, {}

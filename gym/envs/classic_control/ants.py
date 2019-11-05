@@ -39,10 +39,6 @@ class AntsEnv(gym.Env):
     reward_range = (-float('inf'), float('inf'))
     spec = None
 
-    # Set these in ALL subclasses
-    action_space = None
-    observation_space = None
-
     def __init__(self, Nmax=12, dt=0.1):
     # def __init__(self, Nmax=12, dt=1):
         self.Nmax = Nmax # total number of ants (including one informer)
@@ -79,7 +75,8 @@ class AntsEnv(gym.Env):
         self.action_space = spaces.Box(low=-1., high=1., shape=((self.Nmax-1)*2,), dtype=np.float32)
 
         # dot product between ant direction and force direction due to other ants
-        self.observation_space = spaces.Box(low=-float('inf'), high=float('inf'), shape=(self.Nmax-1,), dtype=np.float32)
+        high = np.tile([np.inf,1],self.Nmax-1)
+        self.observation_space = spaces.Box(low=-high, high=high, dtype=np.float32)
 
         self.state = None, None
 
@@ -125,6 +122,11 @@ class AntsEnv(gym.Env):
 
         position, velocity = self.state
 
+        # untangle action space order
+        acts = list(range((self.Nmax-1)*2))
+        inverse = np.append(acts[:-1:2],acts[1::2])
+        action = action[inverse]
+
         # pullProb = np.append(0, action["pullProb"])
         pullProb = np.append(0, action[:self.Nmax-1]/2.+.5)
         isPuller = np.random.uniform(0., 1., self.Nmax)
@@ -157,10 +159,11 @@ class AntsEnv(gym.Env):
         velocity = np.array([velx, vely, omega])
         position = position + velocity*self.dt
         self.state = position, velocity
-        self.relDir = np.sum(np.array([Ftotx, Ftoty])*np.array([pulx, puly]), axis=0)
+        self.Ftot = np.linalg.norm([Ftotx, Ftoty], axis=0)
+        self.Fhat = np.sum(np.array([Ftotx/self.Ftot, Ftoty/self.Ftot])*np.array([pulx, puly]), axis=0)
 
         # reward is to move to the right as fast as possible
-        return self.relDir[1:], velocity[0], False, {}
+        return self._get_obs(), velocity[0], False, {}
 
     def reset(self):
         """Resets the state of the environment and returns an initial observation.
@@ -170,8 +173,15 @@ class AntsEnv(gym.Env):
         """
 
         self.state = np.full(3, 0.), np.random.uniform(-1., 1., 3)
-        self.relDir = np.random.uniform(-1., 1., self.Nmax)
-        return self.relDir[1:]
+        self.Ftot = np.random.uniform(-1., 1., self.Nmax)
+        self.Fhat = np.random.uniform(-1., 1., self.Nmax)
+        return self._get_obs()
+
+    def _get_obs(self):
+        ants = np.array(range(self.Nmax-1))
+        order = np.concatenate((ants[:,None],ants[:,None]+self.Nmax-1),axis=1).flatten()
+        obs = np.append(self.Ftot[1:], self.Fhat[1:])
+        return obs[order]
 
     def render(self, mode='human'):
         """Renders the environment.

@@ -52,12 +52,13 @@ class AntsEnv(gym.Env):
         self.tkin0 = 1. # bare rotational friction force
         self.beta = 1./(self.Nmax/2.) # lifter friction reduction coeff
         self.dphi = 30./180*np.pi # max pull angle change
-        self.Fp2l = 0.1 # P2L force transition threshold
+
         self.theta = np.linspace(0.,2*np.pi,self.Nmax+1)
         self.theta = self.theta[:-1] # ant angular locations
         self.rx = self.b*np.cos(self.theta) # initial ant locations
         self.ry = self.b*np.sin(self.theta) # initial ant locations
         self.phi = np.full(self.Nmax,0.) # initial ant directions
+        self.pulling = np.full(self.Nmax,0) # initially ants not pulling in graphics
 
         """
         self.action_space = spaces.Dict({
@@ -131,6 +132,8 @@ class AntsEnv(gym.Env):
         pullProb = np.append(0, action[:self.Nmax-1]/2.+.5)
         isPuller = np.random.uniform(0., 1., self.Nmax)
         isPuller = (isPuller >= pullProb)*1
+
+        self.pulling = np.logical_xor(isPuller, self.pulling)
 
         # self.phi = np.append(-position[2]-self.theta[0], action["phi"])
         self.phi = np.append(-position[2]-self.theta[0], action[self.Nmax-1:]*self.dphi/2.)
@@ -237,11 +240,11 @@ class AntsEnv(gym.Env):
 
         def make_ant(length=1):
             l = length/4
-            leg1 = rendering.PolyLine([(l/2,0),(l/2,l),(-l*1.5,3*l),(l/2,l)],True)
+            leg1 = rendering.PolyLine([(l/2,0),(l/2,l),(-l*.5,3*l),(l/2,l)],True)
             leg2 = rendering.PolyLine([(l/2,0),(l/2,-l),(-l*1.5,-3*l),(l/2,-l)],True)
-            leg3 = rendering.PolyLine([(l*1.5,0),(l*1.5,l/2),(l*2,2.5*l),(l*1.5,l/2)],True)
+            leg3 = rendering.PolyLine([(l*1.5,0),(l*1.5,l/2),(l,2.5*l),(l*1.5,l/2)],True)
             leg4 = rendering.PolyLine([(l*1.5,0),(l*1.5,-l/2),(l*2,-2.5*l),(l*1.5,-l/2)],True)
-            leg5 = rendering.PolyLine([(l*2.5,0),(l*2.5,l/2),(l*3.5,2*l),(l*2.5,l/2)],True)
+            leg5 = rendering.PolyLine([(l*2.5,0),(l*2.5,l/2),(l*2.5,2*l),(l*2.5,l/2)],True)
             leg6 = rendering.PolyLine([(l*2.5,0),(l*2.5,-l/2),(l*3.5,-2*l),(l*2.5,-l/2)],True)
             circ0 = make_ellipse(2*l, l/1.5)
             circ1 = make_ellipse(l, l/2)
@@ -257,6 +260,16 @@ class AntsEnv(gym.Env):
             rendering._add_attrs(geom, attrs)
             Viewer.add_onetime(geom)
             return geom
+
+        from pyglet.gl import glRotatef, glPushMatrix
+        class Flip(rendering.Transform):
+            def __init__(self, flipx=0, flipy=0):
+                self.flipx = flipx
+                self.flipy = flipy
+            def enable(self):
+                glPushMatrix()
+                if (self.flipx == 1): glRotatef(180, 0, 1., 0)
+                if (self.flipy == 1): glRotatef(180, 1., 0, 0)
 
         if self.viewer is None:
             self.viewer = rendering.Viewer(800,400)
@@ -284,6 +297,7 @@ class AntsEnv(gym.Env):
         for i in range(self.Nmax):
             ant = draw_ant(self.viewer, self.b/self.Nmax*np.pi)
             antgle = self.theta[i]+self.phi[i]+np.pi
+            ant.add_attr(Flip(flipy=self.pulling[i]*1))
             antRot = rendering.Transform(rotation=antgle, translation=(self.rx[i],self.ry[i]))
             ant.add_attr(antRot)
             ant.add_attr(cargoMove)

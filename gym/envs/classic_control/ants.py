@@ -77,7 +77,8 @@ class AntsEnv(gym.Env):
 
         # dot product between ant direction and force direction due to other ants
         high = np.tile([np.inf,1],self.Nmax-1)
-        self.observation_space = spaces.Box(low=-high, high=high, dtype=np.float32)
+        low = np.tile([0,-1],self.Nmax-1)
+        self.observation_space = spaces.Box(low=low, high=high, dtype=np.float32)
 
         self.state = None, None
 
@@ -175,16 +176,26 @@ class AntsEnv(gym.Env):
 
         return self._get_obs(), reward, False, {}
 
-    def reset(self):
+    def reset(self, rand=False):
         """Resets the state of the environment and returns an initial observation.
 
         Returns:
             observation (object): the initial observation.
         """
 
-        self.state = np.full(3, 0.), np.random.uniform(-1., 1., 3)
-        self.Ftot = np.random.uniform(-1., 1., self.Nmax)
-        self.Fang = np.random.uniform(-1., 1., self.Nmax)
+        self.state = np.full(3, 0.), np.full(3, 0.)
+        self.theta = np.linspace(0.,2*np.pi,self.Nmax+1)
+        self.theta = self.theta[:-1] # ant angular locations
+        self.rx = self.b*np.cos(self.theta) # initial ant locations
+        self.ry = self.b*np.sin(self.theta) # initial ant locations
+        self.phi = np.full(self.Nmax,0.) # initial ant directions
+        self.pulling = np.full(self.Nmax,0) # initially ants not pulling in graphics
+
+        if rand:
+            self.goalDir = np.random.uniform(-np.pi/2,np.pi/2,1); # informer direction
+
+        self.Ftot = np.full(self.Nmax, 0.)
+        self.Fang = np.full(self.Nmax, 0.)
         return self._get_obs()
 
     def _get_obs(self):
@@ -216,22 +227,19 @@ class AntsEnv(gym.Env):
 
         Args:
             mode (str): the mode to render with
-
-        Example:
-
-        class MyEnv(Env):
-            metadata = {'render.modes': ['human', 'rgb_array']}
-
-            def render(self, mode='human'):
-                if mode == 'rgb_array':
-                    return np.array(...) # return RGB frame suitable for video
-                elif mode == 'human':
-                    ... # pop up a window and render
-                else:
-                    super(MyEnv, self).render(mode=mode) # just raise an exception
         """
 
         from gym.envs.classic_control import rendering
+        from pyglet.gl import glRotatef, glPushMatrix
+
+        class Flip(rendering.Transform):
+            def __init__(self, flipx=False, flipy=False):
+                self.flipx = flipx
+                self.flipy = flipy
+            def enable(self):
+                glPushMatrix()
+                if self.flipx: glRotatef(180, 0, 1., 0)
+                if self.flipy: glRotatef(180, 1., 0, 0)
 
         def make_ellipse(major=10, minor=5, res=30, filled=True):
             points = []
@@ -258,6 +266,7 @@ class AntsEnv(gym.Env):
             circ2.add_attr(rendering.Transform(translation=(2*l+l/2, 0)))
             geom = rendering.Compound([leg1, leg2, leg3, leg4, leg5, leg6, circ0, circ1, circ2])
             geom.add_attr(rendering.Transform(translation=(-3*l, 0)))
+            geom.add_attr(Flip(flipx=True))
             return geom
 
         def draw_ant(Viewer, length=1, **attrs):
@@ -266,46 +275,69 @@ class AntsEnv(gym.Env):
             Viewer.add_onetime(geom)
             return geom
 
-        from pyglet.gl import glRotatef, glPushMatrix
-        class Flip(rendering.Transform):
-            def __init__(self, flipx=0, flipy=0):
-                self.flipx = flipx
-                self.flipy = flipy
-            def enable(self):
-                glPushMatrix()
-                if (self.flipx == 1): glRotatef(180, 0, 1., 0)
-                if (self.flipy == 1): glRotatef(180, 1., 0, 0)
+        def draw_lasting_line(Viewer, start, end, **attrs):
+            geom = rendering.Line(start, end)
+            rendering._add_attrs(geom, attrs)
+            Viewer.add_geom(geom)
+            return geom
+
+        def draw_lasting_circle(Viewer, radius=10, res=30, filled=True, **attrs):
+            geom = rendering.make_circle(radius=radius, res=res, filled=filled)
+            rendering._add_attrs(geom, attrs)
+            Viewer.add_geom(geom)
+            return geom
+
+        def draw_filled_donut(Viewer, rout=10, rin=5, res=30, **attrs):
+            points = []
+            for i in range(res+1):
+                ang = 2*np.pi*i / res
+                points.append((np.cos(ang)*rout, np.sin(ang)*rout))
+            for i in range(res+1):
+                ang = 2*np.pi*i / res
+                points.append((np.cos(ang)*rin, np.sin(ang)*rin))
+            geom = []
+            for i in range(res):
+                geom.append(rendering.FilledPolygon([points[j] for j in [i,i+1,i+res+2,i+res+1]]))
+            geom = rendering.Compound(geom)
+            rendering._add_attrs(geom, attrs)
+            Viewer.add_onetime(geom)
+            return geom
 
         if self.viewer is None:
             self.viewer = rendering.Viewer(800,400)
-        
+            draw_lasting_line(self.viewer, (-1000., 0), (1000., 0))
+            draw_lasting_line(self.viewer, (0, -1000.), (0, 1000.))
+            draw_lasting_line(self.viewer, (-800., -800.), (800., 800.))
+            draw_lasting_line(self.viewer, (800., -800.), (-800., 800.))
+            startPoint = draw_lasting_circle(self.viewer, radius=1)
+            startPoint.set_color(.8, .8, .8)
+
         position, velocity = self.state
         bound = 10
-        self.viewer.set_bounds(-bound+position[0],bound+position[0],-bound/2+position[1],bound/2+position[1])
-        # self.viewer.set_bounds(-bound,bound,-bound/2+position[1],bound/2+position[1])
+        self.viewer.set_bounds(-bound+position[0], bound+position[0], 
+            -bound/2+position[1], bound/2+position[1])
 
         if position is None: return None
 
-        self.viewer.draw_line((position[0], position[1]), (position[0]+velocity[0]*self.dt, position[1]+velocity[1]*self.dt))
-        self.viewer.draw_line((-1000., 0), (1000., 0))
-        self.viewer.draw_line((0, -1000.), (0, 1000.))
-        startPoint = self.viewer.draw_circle(1)
-        startPoint.set_color(.8, .8, .8)
+        trail = draw_lasting_line(self.viewer, (position[0], position[1]), 
+            (position[0]+velocity[0]*self.dt, position[1]+velocity[1]*self.dt))
+        trail.set_color(.9, .1, .1)
 
-        cargo = self.viewer.draw_circle(self.b)
+        cargo = draw_filled_donut(self.viewer, rout=self.b, rin=self.b/2.5)
         leader = self.viewer.draw_line((0., 0.), (self.b, 0.))
-        leader.add_attr(rendering.Transform(rotation=position[2]))
-        cargoMove = rendering.Transform(rotation=position[2], translation=(position[0],position[1]))
+        cargoMove = rendering.Transform(rotation=position[2], 
+            translation=(position[0],position[1]))
         leader.add_attr(cargoMove)
         cargo.add_attr(cargoMove)
-        cargo.set_color(.9, .1, .1)
+        cargo.set_color(.8, .4, .2)
+
         for i in range(self.Nmax):
             ant = draw_ant(self.viewer, self.b/self.Nmax*np.pi)
-            antgle = self.theta[i]+self.phi[i]+np.pi
-            ant.add_attr(Flip(flipy=self.pulling[i]*1))
-            antRot = rendering.Transform(rotation=antgle, translation=(self.rx[i],self.ry[i]))
-            ant.add_attr(antRot)
-            ant.add_attr(cargoMove)
+            antgle = position[2]+self.theta[i]+self.phi[i]
+            ant.add_attr(Flip(flipy=self.pulling[i]))
+            antMove = rendering.Transform(rotation=antgle, 
+                translation=(self.rx[i] + position[0],self.ry[i] + position[1]))
+            ant.add_attr(antMove)
 
         return self.viewer.render(return_rgb_array = mode=='rgb_array')
 

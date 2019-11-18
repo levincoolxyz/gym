@@ -39,8 +39,7 @@ class AntsEnv(gym.Env):
     reward_range = (-float('inf'), float('inf'))
     spec = None
 
-    def __init__(self, Nmax=12, dt=0.1):
-    # def __init__(self, Nmax=12, dt=1):
+    def __init__(self, Nmax=12, dt=0.1, InformerDirection=0):
         self.Nmax = Nmax # total number of ants (including one informer)
         self.dt = dt # decision time step
 
@@ -58,11 +57,12 @@ class AntsEnv(gym.Env):
         self.rx = self.b*np.cos(self.theta) # initial ant locations
         self.ry = self.b*np.sin(self.theta) # initial ant locations
         self.phi = np.full(self.Nmax,0.) # initial ant directions
+        self.goalDir = InformerDirection; # informer direction
         self.pulling = np.full(self.Nmax,0) # initially ants not pulling in graphics
 
         """
         self.action_space = spaces.Dict({
-            "pullProb": spaces.Box(low=0.,high=1., shape=(self.Nmax-1,), dtype=np.float32), 
+            "liftProb": spaces.Box(low=0.,high=1., shape=(self.Nmax-1,), dtype=np.float32), 
             "phi": spaces.Box(low=-self.dphi/2, high=self.dphi/2, shape=(self.Nmax-1,), dtype=np.float32)
             })
 
@@ -128,21 +128,23 @@ class AntsEnv(gym.Env):
         inverse = np.append(acts[:-1:2],acts[1::2])
         action = action[inverse]
 
-        # pullProb = np.append(0, action["pullProb"])
-        pullProb = np.append(0, action[:self.Nmax-1]/2.+.5)
+        # liftProb = np.append(0, action["liftProb"])
+        liftProb = np.append(0, action[:self.Nmax-1]/2.+.5)
         isPuller = np.random.uniform(0., 1., self.Nmax)
-        isPuller = (isPuller >= pullProb)*1
+        isPuller = (isPuller >= liftProb)*1
 
         self.pulling = np.logical_xor(isPuller, self.pulling)
 
-        # self.phi = np.append(-position[2]-self.theta[0], action["phi"])
-        self.phi = np.append(-position[2]-self.theta[0], action[self.Nmax-1:]*self.dphi/2.)
+        # self.phi = np.append(-position[2]-self.theta[0]+self.goalDir, action["phi"])
+        self.phi = np.append(-position[2]-self.theta[0]+self.goalDir, action[self.Nmax-1:]*self.dphi/2.)
 
         # update ant states
         self.rx = self.b*np.cos(position[2] + self.theta)
         self.ry = self.b*np.sin(position[2] + self.theta)
-        pulx = isPuller*np.cos(position[2] + self.theta + self.phi)
-        puly = isPuller*np.sin(position[2] + self.theta + self.phi)
+        ax = np.cos(position[2] + self.theta + self.phi)
+        ay = np.sin(position[2] + self.theta + self.phi)
+        pulx = isPuller*ax
+        puly = isPuller*ay
 
         # calculate relative forces
         fkin = np.max([self.fkin0*(1. - self.beta*np.sum(1 - isPuller)), 0.])
@@ -163,12 +165,15 @@ class AntsEnv(gym.Env):
         position = position + velocity*self.dt
         self.state = position, velocity
         self.Ftot = np.linalg.norm([Ftotx, Ftoty], axis=0)
-        Fcos = np.sum([Ftotx*pulx/self.Ftot, Ftoty*puly/self.Ftot], axis=0)
-        Fsin = np.sum([Ftotx*puly/self.Ftot, -Ftoty*pulx/self.Ftot], axis=0)
+        # print(np.mean(self.Ftot))
+        Fcos = np.sum([Ftotx*ax/self.Ftot, Ftoty*ay/self.Ftot], axis=0)
+        Fsin = np.sum([Ftotx*ay/self.Ftot, -Ftoty*ax/self.Ftot], axis=0)
         self.Fang = np.arctan2(Fsin,Fcos)/np.pi
+        # print([np.min(self.Fang),np.max(self.Fang)])
 
-        # reward is to move to the right as fast as possible
-        return self._get_obs(), velocity[0], False, {}
+        reward = velocity[0]*np.cos(self.goalDir) + velocity[1]*np.sin(self.goalDir)
+
+        return self._get_obs(), reward, False, {}
 
     def reset(self):
         """Resets the state of the environment and returns an initial observation.

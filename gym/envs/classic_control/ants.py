@@ -192,7 +192,7 @@ class AntsEnv(gym.Env):
         self.pulling = np.full(self.Nmax,0) # initially ants not pulling in graphics
 
         if rand:
-            self.goalDir = np.random.uniform(-np.pi/2,np.pi/2); # informer direction
+            self.goalDir = np.random.uniform(-np.pi,np.pi); # informer direction
 
         self.Ftot = np.full(self.Nmax, 0.)
         self.Fang = np.full(self.Nmax, 0.)

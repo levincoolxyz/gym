@@ -191,11 +191,11 @@ class AntsEnv(gym.Env):
         if rand:
             self.goalDir = np.random.uniform(-np.pi,np.pi); # informer direction
             antSpace = 2*np.pi/self.Nmax
-            antWidth = antSpace/2
+            antWidth = antSpace/1.2
             for i in range(self.Nmax): # ant distribution around cargo
                 self.theta[i] = np.random.uniform(0.,antSpace-antWidth/2) + antSpace*i + antWidth/2
             np.random.shuffle(self.theta)
-            self.phi = np.random.uniform(self.dphi/2-self.dphi/2.,2*np.pi,(self.Nmax,)) # initial ant directions
+            self.phi = np.random.uniform(-self.dphi/2.,self.dphi/2,(self.Nmax,)) # initial ant directions
         else:
             self.theta = np.linspace(0.,2*np.pi,self.Nmax+1)
             self.theta = self.theta[:-1] # ant angular locations

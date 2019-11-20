@@ -149,8 +149,8 @@ class AntsEnv(gym.Env):
         puly = isPuller*ay
 
         # calculate relative forces
-        fkin = np.max([self.fkin0*(1. - self.beta*np.sum(1 - isPuller)), 0.])
-        tkin = np.max([self.tkin0*(1. - self.beta*np.sum(1 - isPuller)), 0.])
+        fkin = np.maximum(self.fkin0*(1. - self.beta*np.sum(1 - isPuller)), 0)
+        tkin = np.maximum(self.tkin0*(1. - self.beta*np.sum(1 - isPuller)), 0)
         fcmx = (self.f0 - fkin)*np.sum(pulx)
         fcmy = (self.f0 - fkin)*np.sum(puly)
         tcm = (self.f0 - tkin)*np.sum(isPuller*np.sin(self.phi))
@@ -167,9 +167,8 @@ class AntsEnv(gym.Env):
         position = position + velocity*self.dt
         self.state = position, velocity
         self.Ftot = np.linalg.norm([Ftotx, Ftoty], axis=0)
-        Fnorm = self.Ftot
-        Fnorm[Fnorm==0] = 1
         # print(np.mean(self.Ftot))
+        Fnorm = np.maximum(self.Ftot, 1e-8)
         Fcos = np.sum([Ftotx*ax/Fnorm, Ftoty*ay/Fnorm], axis=0)
         Fsin = np.sum([Ftotx*ay/Fnorm, -Ftoty*ax/Fnorm], axis=0)
         self.Fang = np.arctan2(Fsin,Fcos)/np.pi

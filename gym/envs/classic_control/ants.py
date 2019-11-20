@@ -39,25 +39,26 @@ class AntsEnv(gym.Env):
     reward_range = (-float('inf'), float('inf'))
     spec = None
 
-    def __init__(self, Nmax=12, dt=0.1, InformerDirection=0):
+    def __init__(self, Nmax=12, dt=0.1, 
+        f0=0.25, b=1., gamma=1., grot=1., fkin0=1., tkin0=1., beta=2., dphi=30., goalDir=0):
         self.Nmax = Nmax # total number of ants (including one informer)
         self.dt = dt # decision time step
 
-        self.f0 = .25 # ant pull force
-        self.b = 1. # radius of cargo
-        self.gamma = 1. # translational response coeff of cargo
-        self.grot = 1. # rotational response coeff of cargo
-        self.fkin0 = 1. # bare translational friction force
-        self.tkin0 = 1. # bare rotational friction force
-        self.beta = 1./(self.Nmax/2.) # lifter friction reduction coeff
-        self.dphi = 30./180*np.pi # max pull angle change
+        self.f0 = f0 # ant pull force
+        self.b = b # radius of cargo
+        self.gamma = gamma # translational response coeff of cargo
+        self.grot = grot # rotational response coeff of cargo
+        self.fkin0 = fkin0 # bare translational friction force
+        self.tkin0 = tkin0 # bare rotational friction force
+        self.beta = beta/self.Nmax # lifter friction reduction coeff
+        self.dphi = dphi/180*np.pi # max pull angle change
+        self.goalDir = goalDir/180*np.pi; # informer target direction
 
         self.theta = np.linspace(0.,2*np.pi,self.Nmax+1)
         self.theta = self.theta[:-1] # ant angular locations
         self.rx = self.b*np.cos(self.theta) # initial ant locations
         self.ry = self.b*np.sin(self.theta) # initial ant locations
         self.phi = np.full(self.Nmax,0.) # initial ant directions
-        self.goalDir = InformerDirection; # informer direction
         self.pulling = np.full(self.Nmax,0) # initially ants not pulling in graphics
 
         """
@@ -166,9 +167,11 @@ class AntsEnv(gym.Env):
         position = position + velocity*self.dt
         self.state = position, velocity
         self.Ftot = np.linalg.norm([Ftotx, Ftoty], axis=0)
+        Fnorm = self.Ftot
+        Fnorm[Fnorm==0] = 1
         # print(np.mean(self.Ftot))
-        Fcos = np.sum([Ftotx*ax/self.Ftot, Ftoty*ay/self.Ftot], axis=0)
-        Fsin = np.sum([Ftotx*ay/self.Ftot, -Ftoty*ax/self.Ftot], axis=0)
+        Fcos = np.sum([Ftotx*ax/Fnorm, Ftoty*ay/Fnorm], axis=0)
+        Fsin = np.sum([Ftotx*ay/Fnorm, -Ftoty*ax/Fnorm], axis=0)
         self.Fang = np.arctan2(Fsin,Fcos)/np.pi
         # print([np.min(self.Fang),np.max(self.Fang)])
 
@@ -183,16 +186,24 @@ class AntsEnv(gym.Env):
             observation (object): the initial observation.
         """
 
-        self.state = np.full(3, 0.), np.full(3, 0.)
-        self.theta = np.linspace(0.,2*np.pi,self.Nmax+1)
-        self.theta = self.theta[:-1] # ant angular locations
-        self.rx = self.b*np.cos(self.theta) # initial ant locations
-        self.ry = self.b*np.sin(self.theta) # initial ant locations
-        self.phi = np.full(self.Nmax,0.) # initial ant directions
-        self.pulling = np.full(self.Nmax,0) # initially ants not pulling in graphics
+        self.state = np.full(3, 0.), np.full(3, 0.) # reset cargo location
+        self.pulling = np.full(self.Nmax,0) # initialize ants rendering state
 
         if rand:
             self.goalDir = np.random.uniform(-np.pi,np.pi); # informer direction
+            antSpace = 2*np.pi/self.Nmax
+            antWidth = antSpace/2
+            for i in range(self.Nmax): # ant distribution around cargo
+                self.theta[i] = np.random.uniform(0.,antSpace-antWidth/2) + antSpace*i + antWidth/2
+            np.random.shuffle(self.theta)
+            self.phi = np.random.uniform(self.dphi/2-self.dphi/2.,2*np.pi,(self.Nmax,)) # initial ant directions
+        else:
+            self.theta = np.linspace(0.,2*np.pi,self.Nmax+1)
+            self.theta = self.theta[:-1] # ant angular locations
+            self.phi = np.full(self.Nmax,0.) # initial ant directions
+
+        self.rx = self.b*np.cos(self.theta) # initial ant locations
+        self.ry = self.b*np.sin(self.theta) # initial ant locations
 
         self.Ftot = np.full(self.Nmax, 0.)
         self.Fang = np.full(self.Nmax, 0.)
@@ -324,18 +335,18 @@ class AntsEnv(gym.Env):
         trail.set_color(.9, .1, .1)
 
         cargo = draw_filled_donut(self.viewer, rout=self.b, rin=self.b/2.5)
-        leader = self.viewer.draw_line((0., 0.), (self.b, 0.))
-        cargoMove = rendering.Transform(rotation=position[2], 
-            translation=(position[0],position[1]))
-        leader.add_attr(cargoMove)
-        cargo.add_attr(cargoMove)
+        cargo.add_attr(rendering.Transform(rotation=position[2], 
+            translation=(position[0],position[1])))
         cargo.set_color(.8, .4, .2)
+
+        leader = self.viewer.draw_line((0., 0.), (self.b, 0.))
+        leader.add_attr(rendering.Transform(rotation=position[2]+self.theta[0], 
+            translation=(position[0],position[1])))
 
         for i in range(self.Nmax):
             ant = draw_ant(self.viewer, self.b/self.Nmax*np.pi)
-            antgle = position[2]+self.theta[i]+self.phi[i]
             ant.add_attr(Flip(flipy=self.pulling[i]))
-            antMove = rendering.Transform(rotation=antgle, 
+            antMove = rendering.Transform(rotation=position[2]+self.theta[i]+self.phi[i], 
                 translation=(self.rx[i] + position[0],self.ry[i] + position[1]))
             ant.add_attr(antMove)
 
